@@ -1,38 +1,51 @@
-from machine import Pin, UART
-import utime
+import network
+import socket
+import time
 
-# UART para RS-485
-uart = UART(1, baudrate=9600, tx=Pin(4), rx=Pin(5))
+ID_NODO = 1  # Cambia esto para cada nodo
+RED_REFERENCIA = "APCARRITO"
 
-# Control de dirección RS-485 (DE + RE unidos)
-dir_ctrl = Pin(6, Pin.OUT)
-dir_ctrl.value(0)  # Modo recepción por defecto
+# Configurar Wi-Fi
+wlan = network.WLAN(network.STA_IF)
+wlan.active(True)
+wlan.ifconfig((
+    f'192.168.1.101{ID_NODO}',  # IP fija
+    '255.255.255.0',
+    '192.168.1.1',
+    '192.168.1.1'
+))
+wlan.connect('APMAESTRO', '12345678')
+print("Conectando al maestro...")
 
-# Pin que recibe la señal del maestro
-pin_senal = Pin(0, Pin.IN, Pin.PULL_DOWN)
+while not wlan.isconnected():
+    print("Esperando conexión al maestro...")
+    time.sleep(1)
 
-# Estado previo del pin
-estado_anterior = 0
+print(f"Nodo {ID_NODO} conectado. IP:", wlan.ifconfig())
 
-# Identificador único del nodo (puede ser diferente por nodo)
-NODO_ID = "Nodo 2"
+# Crear socket UDP
+udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+DESTINO = ('192.168.1.100', 5005)
 
-def enviar_mensaje():
-    dir_ctrl.value(1)        # Activar transmisión
-    utime.sleep_us(20)
-    uart.write(f"Mensaje de {NODO_ID}\n")
-    utime.sleep_us(20)
-    dir_ctrl.value(0)        # Volver a recepción (por seguridad)
+def leer_rssi_red_objetivo():
+    redes = wlan.scan()
+    #print("Redes detectadas:")
+    for red in redes:
+        try:
+            ssid = red[0].decode()
+            print(f"SSID: {ssid}, RSSI: {red[3]}")
+            if ssid == RED_REFERENCIA:
+                return red[3]
+        except:
+            continue
+    print("No se encontró la red de referencia.")
+    return -100
 
-print(f"{NODO_ID} listo. Esperando señal para transmitir...")
+print("Entrando al bucle principal...")
 
 while True:
-    estado_actual = pin_senal.value()
-
-    # Flanco ascendente: de 0 a 1
-    if estado_actual == 1 and estado_anterior == 0:
-        print("Señal recibida. Enviando mensaje...")
-        enviar_mensaje()
-
-    estado_anterior = estado_actual
-    utime.sleep(0.05)
+    valor = leer_rssi_red_objetivo()
+    mensaje = f"{ID_NODO}:{valor}"
+    print("Enviando:", mensaje)
+    udp.sendto(mensaje.encode(), DESTINO)
+    time.sleep(2)
