@@ -1,35 +1,37 @@
-import serial
-import time	
 from machine import Pin, UART
 import utime
 
-puerto = 'COM3'  # Cambia esto según el puerto donde esté conectada tu Pico
-velocidad = 115200  # Velocidad por defecto para MicroPython
+# Configurar UART1 (puedes usar UART0 si quieres otros pines)
+uart = UART(1, baudrate=9600, tx=Pin(4), rx=Pin(5))
 
-# Pines para activar nodos
-nodo1_pin = Pin(0, Pin.OUT)
-nodo2_pin = Pin(1, Pin.OUT)
-mensaje = 0
-# UART para recibir datos de los nodos
-uart = UART(1, baudrate=9600, tx=Pin(4), rx=Pin(5))  # Asegúrate de conectar RX al TX del nodo
+# Pin para controlar dirección (DE/RE unidos)
+dir_ctrl = Pin(6, Pin.OUT)
 
-def recibir_rssi():
-    if uart.any():
-        mensaje = uart.read()  # Leer y decodificar el mensaje
-        return mensaje
+# Funciones auxiliares
+def enviar_mensaje(mensaje):
+    dir_ctrl.value(1)  # Activar modo transmisión
+    utime.sleep_us(20) # Pequeña espera para estabilidad
+    uart.write(mensaje + '\n')  # Enviar mensaje con nueva línea
+    utime.sleep_us(20)
+    dir_ctrl.value(0)  # Volver a modo recepción
+
+# Inicialmente, modo recepción
+dir_ctrl.value(0)
+
+print("Nodo Pico W listo. Escuchando mensajes...")
+
+contador = 0
 
 while True:
-    # Activa nodo 1
-    nodo1_pin.high()
-    utime.sleep(0.1)
-    nodo1_pin.low()
-    rssi1 = recibir_rssi()
+    # Escuchar mensajes entrantes
+    if uart.any():
+        data = uart.readline()
+        if data:
+            print("Mensaje recibido:", data.decode().strip())
 
-    # Activa nodo 2
-    nodo2_pin.high()
-    utime.sleep(0.1)
-    nodo2_pin.low()
-    rssi2 = recibir_rssi()
+    # Cada 5 segundos, enviar un mensaje
+    if contador % 50 == 0:
+        enviar_mensaje("Hola desde nodo RS-485")
 
-    print(f"{rssi1}\t{rssi2}")  # Enviado al PC por USB
-    utime.sleep(1)
+    utime.sleep(0.1)
+    contador += 1
